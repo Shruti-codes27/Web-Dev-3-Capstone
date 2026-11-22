@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Real-Time Socket.IO Notification Console</title>
+  <script src="/socket.io/socket.io.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background-color: #f3f4f6; padding: 24px; color: #1f2937; }
+    .container { max-width: 1000px; margin: 0 auto; }
+    header { background: #1e3a8a; color: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
+    header h1 { font-size: 22px; margin-bottom: 6px; }
+    header p { font-size: 14px; opacity: 0.9; }
+    .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 20px; }
+    .status-badge { display: inline-block; padding: 4px 10px; border-radius: 12px; font-size: 13px; font-weight: 600; }
+    .connected { background: #dcfce7; color: #15803d; }
+    .disconnected { background: #fee2e2; color: #b91c1c; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+    label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+    input, select, button { width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; }
+    button { background: #2563eb; color: white; border: none; cursor: pointer; font-weight: 600; transition: background 0.2s; }
+    button:hover { background: #1d4ed8; }
+    .log-box { background: #111827; color: #f9fafb; padding: 16px; border-radius: 6px; font-family: monospace; font-size: 13px; height: 350px; overflow-y: auto; }
+    .log-entry { margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px solid #374151; }
+    .log-time { color: #9ca3af; font-size: 11px; }
+    .log-tag { font-weight: bold; padding: 2px 6px; border-radius: 4px; font-size: 11px; margin-right: 6px; }
+    .tag-order { background: #059669; color: white; }
+    .tag-alert { background: #dc2626; color: white; }
+    .tag-status { background: #d97706; color: white; }
+    .tag-system { background: #4b5563; color: white; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>E-Commerce Capstone: Real-Time Event & Notification Hub</h1>
+      <p>Demonstrates live Socket.IO rooms for Customers, Sellers, and Admins</p>
+    </header>
+
+    <div class="card">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+        <h2 style="font-size: 18px;">Socket Connection Status</h2>
+        <span id="conn-badge" class="status-badge disconnected">Disconnected</span>
+      </div>
+
+      <div class="grid">
+        <div>
+          <label for="jwt-token">JWT Access Token (Optional for role-based auto-room join)</label>
+          <input type="text" id="jwt-token" placeholder="Bearer JWT token...">
+        </div>
+        <div>
+          <label for="custom-room">Join Custom Room (e.g. customer_123, seller_456, admin_room)</label>
+          <div style="display: flex; gap: 8px;">
+            <input type="text" id="custom-room" placeholder="Room identifier">
+            <button type="button" style="width: 120px;" onclick="joinCustomRoom()">Join Room</button>
+          </div>
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 10px;">
+        <button type="button" onclick="connectSocket()">Connect Socket</button>
+        <button type="button" style="background: #dc2626;" onclick="disconnectSocket()">Disconnect</button>
+        <button type="button" style="background: #4b5563;" onclick="clearLogs()">Clear Console</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 style="font-size: 18px; margin-bottom: 12px;">Live Real-Time Event Stream</h2>
+      <div id="logs" class="log-box">
+        <div class="log-entry">
+          <span class="log-time">[System Ready]</span>
+          <span class="log-tag tag-system">READY</span>
+          Waiting for events... Connect or trigger checkout / status updates via API.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let socket = null;
+
+    function log(tag, message, tagClass = 'tag-system') {
+      const logs = document.getElementById('logs');
+      const time = new Date().toLocaleTimeString();
+      const entry = document.createElement('div');
+      entry.className = 'log-entry';
+      entry.innerHTML = `
+        <span class="log-time">[${time}]</span>
+        <span class="log-tag ${tagClass}">${tag}</span>
+        <span>${message}</span>
+      `;
+      logs.prepend(entry);
+    }
+
+    function connectSocket() {
+      if (socket && socket.connected) {
+        log('WARN', 'Socket already connected.');
+        return;
+      }
+
+      const token = document.getElementById('jwt-token').value.trim();
+      const options = token ? { auth: { token } } : {};
+
+      socket = io(window.location.origin, options);
+
+      socket.on('connect', () => {
+        document.getElementById('conn-badge').textContent = `Connected (${socket.id})`;
+        document.getElementById('conn-badge').className = 'status-badge connected';
+        log('CONNECTED', `Socket.IO connected successfully with ID: ${socket.id}`, 'tag-system');
+      });
+
+      socket.on('disconnect', () => {
+        document.getElementById('conn-badge').textContent = 'Disconnected';
+        document.getElementById('conn-badge').className = 'status-badge disconnected';
+        log('DISCONNECTED', 'Socket.IO disconnected from server.', 'tag-alert');
+      });
+
+      // Customer events
+      socket.on('order:confirmation', (data) => {
+        log('ORDER PLACED', `Customer confirmation: Order #${data.orderId} | Amount: ₹${data.totalAmount} | Status: ${data.status}`, 'tag-order');
+      });
+
+      socket.on('order:status_change', (data) => {
+        log('STATUS CHANGED', `Order #${data.orderId} moved from ${data.previousStatus} ➔ ${data.currentStatus}`, 'tag-status');
+      });
+
+      // Seller events
+      socket.on('seller:new_order', (data) => {
+        log('SELLER ALERT', `New Order Received! Order #${data.orderId}`, 'tag-order');
+      });
+
+      socket.on('inventory:low_stock_alert', (data) => {
+        log('LOW STOCK WARNING', `Product "${data.productName}" (ID: ${data.productId}) has only ${data.stock} units left! (Threshold: ${data.threshold})`, 'tag-alert');
+      });
+
+      // Admin events
+      socket.on('admin:order_created', (data) => {
+        log('ADMIN NOTIFY', `Platform Order #${data.orderId} created for ₹${data.totalAmount}`, 'tag-system');
+      });
+
+      socket.on('admin:low_stock_warning', (data) => {
+        log('ADMIN WARNING', `Low stock detected for ${data.productName}: ${data.stock} units left`, 'tag-alert');
+      });
+
+      socket.on('connect_error', (err) => {
+        log('ERROR', err.message, 'tag-alert');
+      });
+    }
+
+    function joinCustomRoom() {
+      const room = document.getElementById('custom-room').value.trim();
+      if (!room) return alert('Please enter room name');
+      if (!socket || !socket.connected) return alert('Please connect socket first');
+      socket.emit('join_room', room);
+      log('ROOM JOINED', `Subscribed to room: ${room}`, 'tag-system');
+    }
+
+    function disconnectSocket() {
+      if (socket) {
+        socket.disconnect();
+      }
+    }
+
+    function clearLogs() {
+      document.getElementById('logs').innerHTML = '';
+    }
+  </script>
+</body>
+</html>
