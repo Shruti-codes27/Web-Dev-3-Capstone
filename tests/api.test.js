@@ -2,7 +2,12 @@ const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert');
 const request = require('supertest');
 const mongoose = require('mongoose');
+const dns = require('dns');
 require('dotenv').config();
+
+try {
+  dns.setServers(['8.8.8.8', '1.1.1.1']);
+} catch (e) {}
 
 const app = require('../src/app');
 const User = require('../src/models/User');

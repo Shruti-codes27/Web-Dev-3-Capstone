@@ -1,5 +1,10 @@
 require('dotenv').config();
 const mongoose = require('mongoose');
+const dns = require('dns');
+
+try {
+  dns.setServers(['8.8.8.8', '1.1.1.1']);
+} catch (e) {}
 
 async function testConnection() {
   const uri = process.env.MONGODB_URI;
